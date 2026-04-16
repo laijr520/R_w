@@ -1,0 +1,306 @@
+---
+title: "R作业2"
+author: "laijr"
+date: "2026/4/16"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+header-includes:
+  - \usepackage{ctex}
+  - \usepackage{amsmath}
+---
+
+题目1:离散分布随机数生成与频率比较
+
+```{r q1, fig.width=10, fig.height=4}
+
+set.seed(1)
+
+vals  <- 1:5
+probs <- c(0.15, 0.25, 0.30, 0.20, 0.10)
+n     <- 1200
+
+x <- sample(vals, size = n, replace = TRUE, prob = probs)
+
+par(mfrow = c(1, 2))
+
+# 散点图
+plot(1:n, x,
+     pch  = ".", cex = 1.5,
+     col  = "steelblue",
+     main = "plot",
+     xlab = "index", ylab = "value")
+
+# 直方图
+barplot(table(x) / n,
+        col    = "tomato",
+        border = "white",
+        ylim   = c(0, 0.4),
+        main   = "histogram",
+        xlab   = "X", ylab = "Frequency/Probability")
+lines(1:5, probs, type = "b", pch = 19, col = "navy", lwd = 2)
+legend("topright", legend = c("Frequency", "Probability"),
+       fill = c("tomato", NA), lty = c(NA, 1), pch = c(NA, 19),
+       col  = c("tomato", "navy"), border = c("tomato", NA))
+
+par(mfrow = c(1, 1))
+
+# 数值对比
+for (i in seq_along(vals)) {
+  if(i == 1) {
+    cat("X\t理论概率\t观测频率\n")
+  }
+  cat(vals[i], "\t", probs[i], "\t\t", round(mean(x == vals[i]), 4), "\n")
+}
+
+```
+
+题目2:条件分布法与变换抽样法生成二维正态随机向量
+```{r q2, fig.width=10, fig.height=4}
+set.seed(2)
+
+mu  <- c(2, -1)
+Sig <- matrix(c(4, 1, 1, 2), nrow = 2)
+n2  <- 1500
+
+## 方法一:条件分布法
+## X1 ~ N(mu1, s11);  X2|X1 ~ N(mu2 + s21/s11*(X1-mu1), s22 - s21^2/s11)
+x1_cond <- rnorm(n2, mean = mu[1], sd = sqrt(Sig[1,1]))
+mu2_cond <- mu[2] + Sig[2,1]/Sig[1,1] * (x1_cond - mu[1])
+s2_cond  <- sqrt(Sig[2,2] - Sig[2,1]^2/Sig[1,1])
+x2_cond  <- rnorm(n2, mean = mu2_cond, sd = s2_cond)
+X_cond   <- cbind(x1_cond, x2_cond)
+
+## 方法二:变换抽样法(Cholesky 分解)
+L   <- t(chol(Sig))              # Sigma = L %*% t(L)
+Z   <- matrix(rnorm(2 * n2), nrow = 2)
+X_trans <- t(L %*% Z + mu)      # n2 x 2
+
+par(mfrow = c(1, 2))
+plot(X_cond,  pch = ".", col = "steelblue",
+     main = "Method1", xlab = "X1", ylab = "X2")
+plot(X_trans, pch = ".", col = "tomato",
+     main = "Method2", xlab = "X1", ylab = "X2")
+par(mfrow = c(1, 1))
+
+cat("=== 条件分布法 ===\n",
+    "均值:", paste(colMeans(X_cond), collapse = " "), "\n",
+    "协方差矩阵:\n",
+    paste(capture.output(cov(X_cond)), collapse = "\n"), "\n")
+
+cat("=== 变换抽样法 ===\n",
+    "均值:", paste(colMeans(X_trans), collapse = " "), "\n",
+    "协方差矩阵:\n",
+    paste(capture.output(cov(X_trans)), collapse = "\n"), "\n")
+```
+题目3:分层抽样习题2.5
+```{r q3}
+
+# r= 4层,各层大小 N=(20,30,25,25),总抽样量 m=10,重复1000次
+set.seed(3)
+
+r      <- 4
+N_strata <- c(20, 30, 25, 25)
+N_total  <- sum(N_strata)   # 100
+m        <- 10
+reps     <- 1000
+
+# 按比例分配各层抽样量
+m_i <- round(N_strata / N_total * m)
+# 如有舍入误差则修正到总量
+m_i[r] <- m - sum(m_i[-r])
+
+cat("各层抽样量:", m_i, "\n")
+
+# 生成总体(用层编号标记)
+population <- rep(1:r, times = N_strata)
+
+# 重复1000次分层抽样
+results <- replicate(reps, {
+  sampled <- c()
+  for (k in 1:r) {
+    pool <- which(population == k)
+    sampled <- c(sampled, sample(pool, m_i[k]))
+  }
+  sampled
+})
+
+cat("1000次抽样完成,每次抽", m, "个样本\n")
+cat("前5次抽样结果(各取前3个编号):\n")
+print(results[1:3, 1:5])
+
+# 各层被抽到频率
+layer_freq <- apply(results, 2, function(s) table(factor(population[s], levels=1:r)))
+cat("各层平均被抽频率:\n")
+print(round(rowMeans(layer_freq) / m, 3))
+cat("理论各层抽取比例:", N_strata / N_total, "\n")
+```
+
+题目4:泊松分布参数的期望与方差估计($\lambda=3$,n=800,重复2000次)
+```{r q4}
+set.seed(4)
+
+lambda_true <- 3
+n4          <- 800
+reps4       <- 2000
+
+# 估计量:lambda_hat = X_bar(同时估计期望与方差)
+sim <- replicate(reps4, {
+  x      <- rpois(n4, lambda = lambda_true)
+  lambda_hat <- mean(x)      # MLE = 矩估计 = 样本均值
+  var_hat    <- var(x)       # 样本方差
+  c(lambda_hat, var_hat)
+})
+
+lambda_ests <- sim[1, ]
+var_ests    <- sim[2, ]
+
+cat("=== 期望估计(lambda_hat = X_bar)===\n")
+cat("真实值 lambda=3\n")
+cat("估计均值:", round(mean(lambda_ests), 4), "\n")
+cat("估计标准差:", round(sd(lambda_ests), 4), "\n")
+cat("理论标准误 sqrt(lambda/n):", round(sqrt(lambda_true/n4), 4), "\n\n")
+
+cat("=== 方差估计(S^2)===\n")
+cat("真实值 Var(X)=lambda=3\n")
+cat("估计均值:", round(mean(var_ests), 4), "\n")
+cat("估计标准差:", round(sd(var_ests), 4), "\n")
+
+par(mfrow = c(1, 2))
+hist(lambda_ests, breaks = 40, col = "steelblue", border = "white",
+     main = "Distribution of Lambda Hat", xlab = "lambda_hat")
+abline(v = lambda_true, col = "red", lwd = 2)
+
+hist(var_ests, breaks = 40, col = "tomato", border = "white",
+     main = "Distribution of Variance Estimate", xlab = "S^2")
+abline(v = lambda_true, col = "navy", lwd = 2)
+par(mfrow = c(1, 1))
+```
+
+题目5:Power分布 $f(x;\alpha)=\alpha x^{\alpha-1}, 0<x<1$
+$n=600, \alpha=0.5$:矩估计 vs MLE,比较MSE
+
+```{r q5}
+
+set.seed(5)
+
+alpha_true <- 0.5
+n5         <- 600
+reps5      <- 2000
+
+# 生成 Power(alpha) 随机数:U^(1/alpha)
+sim5 <- replicate(reps5, {
+  u <- runif(n5)
+  x <- u^(1/alpha_true)
+
+  # 矩估计:E[X]=alpha/(alpha+1) => alpha_mom = X_bar/(1-X_bar)
+  xbar     <- mean(x)
+  alpha_mom <- xbar / (1 - xbar)
+
+  # MLE:alpha_mle = -n / sum(log(x))
+  alpha_mle <- -n5 / sum(log(x))
+
+  c(alpha_mom, alpha_mle)
+})
+
+mom_ests <- sim5[1, ]
+mle_ests <- sim5[2, ]
+
+mse_mom <- mean((mom_ests - alpha_true)^2)
+mse_mle <- mean((mle_ests - alpha_true)^2)
+
+cat("=== 矩估计 ===\n")
+cat("均值:", round(mean(mom_ests), 4),
+    " 偏差:", round(mean(mom_ests) - alpha_true, 4),
+    " MSE:", round(mse_mom, 6), "\n\n")
+
+cat("=== 最大似然估计 ===\n")
+cat("均值:", round(mean(mle_ests), 4),
+    " 偏差:", round(mean(mle_ests) - alpha_true, 4),
+    " MSE:", round(mse_mle, 6), "\n")
+
+cat("\nMSE之比 (MOM/MLE):", round(mse_mom/mse_mle, 4), "\n")
+```
+
+题目6:线性模型 $Y = \alpha + \beta*X + \epsilon,\alpha=2,\beta=1.5$
+$X~U(0,1),\epsilon~N(0,1)$,500组样本,OLS估计
+
+```{r q6}
+
+set.seed(6)
+
+alpha_true <- 2
+beta_true  <- 1.5
+n6         <- 500
+
+X   <- runif(n6, 0, 1)
+eps <- rnorm(n6, 0, 1)
+Y   <- alpha_true + beta_true * X + eps
+
+# OLS 最小二乘估计
+Xmat <- cbind(1, X)
+coef_ols <- solve(t(Xmat) %*% Xmat) %*% t(Xmat) %*% Y
+
+alpha_hat <- coef_ols[1]
+beta_hat  <- coef_ols[2]
+
+cat("真实值:alpha=", alpha_true, " beta=", beta_true, "\n")
+cat("OLS估计:alpha_hat=", round(alpha_hat, 4),
+    " beta_hat=", round(beta_hat, 4), "\n")
+
+# 与 lm() 结果对比
+fit <- lm(Y ~ X)
+cat("\nlm() 验证:\n"); print(coef(fit))
+
+# 散点图 + 拟合线
+plot(X, Y, pch = ".", col = "gray50",
+     main = "线性模型 OLS 拟合(n=500)",
+     xlab = "X", ylab = "Y")
+abline(a = alpha_true, b = beta_true, col = "navy",  lwd = 2, lty = 2)
+abline(a = alpha_hat,  b = beta_hat,  col = "tomato", lwd = 2)
+legend("topleft",
+       legend = c("真实直线", "OLS估计"),
+       col    = c("navy", "tomato"),
+       lty    = c(2, 1), lwd = 2)
+```
+
+# ============================================================
+# 课堂作业(iris 散点图 & 均匀分布直方图)
+# ============================================================
+
+```{r iris_plot}
+# iris 花瓣长度与宽度散点图
+colors <- c("setosa" = "tomato", "versicolor" = "steelblue", "virginica" = "seagreen")
+
+plot(Petal.Width ~ Petal.Length,
+     data  = iris,
+     col   = colors[as.character(iris$Species)],
+     pch   = 19,
+     cex   = 0.8,
+     main  = "Iris",
+     xlim  = c(1, 7),
+     ylim  = c(0, 4),
+     xlab  = "Petal Length",
+     ylab  = "Petal Width")
+
+legend("topright",
+       legend = names(colors),
+       col    = colors,
+       pch    = 19,
+       title  = "Species")
+```
+
+```{r}
+# 生成 [0, 10] 之间 100 个均匀分布随机数
+set.seed(42)
+x <- runif(100, min = 0, max = 10)
+
+# 频数直方图
+hist(x,
+     main  = "title_1",
+     xlab  = "value",
+     ylab  = "count",
+     col   = "steelblue",
+     border = "white")
+```
