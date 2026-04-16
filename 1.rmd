@@ -1,6 +1,6 @@
 ---
 title: "R作业2"
-author: "laijr"
+author: "laijr-2024311265"
 date: "2026/4/16"
 output: 
   pdf_document:
@@ -286,7 +286,34 @@ table(x)/n
 ```
 例2.1.4
 ```{r 2.1.4}
-# TODO
+# 使用条件分布法产生二元正态分布向量
+set.seed(214)
+
+# 参数设置
+mu <- c(0, 0)
+sigma11 <- 1
+sigma22 <- 2  # 假设 var(X2) = 2
+rho <- 0.8
+sigma12 <- rho * sqrt(sigma11 * sigma22)  # 协方差
+Sigma <- matrix(c(sigma11, sigma12, sigma12, sigma22), nrow = 2)
+
+n <- 1000
+
+# 条件分布法
+X1 <- rnorm(n, mean = mu[1], sd = sqrt(sigma11))
+mu2_cond <- mu[2] + sigma12 / sigma11 * (X1 - mu[1])
+sigma2_cond <- sqrt(sigma22 - sigma12^2 / sigma11)
+X2 <- rnorm(n, mean = mu2_cond, sd = sigma2_cond)
+X <- cbind(X1, X2)
+
+# 验证均值和协方差
+cat("样本均值:", colMeans(X), "\n",
+"样本协方差矩阵:\n");print(cov(X));cat("理论协方差矩阵:\n");print(Sigma)
+
+# 散点图
+plot(X, pch = ".", col = "steelblue",
+     main = "Bivariate Normal (Conditional Method)",
+     xlab = "X1", ylab = "X2")
 ```
 
 课堂作业
@@ -320,7 +347,7 @@ x <- runif(100, min = 0, max = 10)
 
 # 频数直方图
 hist(x,
-     main  = "title_1",
+     main  = "Uniform(0,10) Distribution",
      xlab  = "value",
      ylab  = "count",
      col   = "steelblue",
